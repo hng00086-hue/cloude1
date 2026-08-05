@@ -4,3 +4,4 @@ obj/
 
 # Credenciales reales de conexión a SAP: no se suben al repo
 SapConnection/config.json
+Producción/config.json
