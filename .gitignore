@@ -4,3 +4,9 @@ obj/
 
 # Credenciales reales de conexión a SAP: no se suben al repo
 SapConnection/config.json
+SapPythonApp/config.json
+
+# Python
+__pycache__/
+*.pyc
+SapPythonApp/venv/

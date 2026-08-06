@@ -1,0 +1,14 @@
+[Unit]
+Description=SAP Python App (Service Layer)
+After=network.target
+
+[Service]
+Type=simple
+User=itln
+WorkingDirectory=/opt/sap-python-app
+ExecStart=/opt/sap-python-app/venv/bin/python /opt/sap-python-app/main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

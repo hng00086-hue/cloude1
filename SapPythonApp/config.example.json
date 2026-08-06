@@ -1,0 +1,8 @@
+{
+  "ServiceLayerUrl": "https://192.168.10.9:50000/b1s/v1",
+  "CompanyDB": "SBODEMOUS",
+  "UserName": "manager",
+  "Password": "TU_PASSWORD_AQUI",
+  "VerifySSL": false,
+  "TimeoutSeconds": 15
+}
