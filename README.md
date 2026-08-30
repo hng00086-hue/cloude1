@@ -47,6 +47,25 @@ Ejecutar una consulta propia:
 dotnet run -- "SELECT TOP 10 * FROM OCRD"
 ```
 
+Generar el informe de stocks por almacén (equivalente a "Informe de stocks por
+almacén" de SAP Business One), para todos los artículos (con y sin manejo de
+inventario) y todos los almacenes, sin restricciones de rango:
+
+```bash
+dotnet run -- inventario
+```
+
+El resultado es una tabla con una fila por artículo, una columna por almacén
+con la cantidad en stock (en blanco si no hay existencias en ese almacén) y
+una columna de Total de almacén con la suma. Los artículos con `InvntItem = 'N'`
+(sin manejo de inventario) también aparecen, con todas las columnas de almacén
+en blanco, ya que SAP no lleva existencias por almacén para ellos.
+
+También hay un script SQL equivalente en
+[`SapConnection/InventarioPorAlmacen.sql`](SapConnection/InventarioPorAlmacen.sql)
+para pegar y ejecutar directamente en SQL Server Management Studio, sin pasar
+por la app de consola.
+
 ## Notas de seguridad
 
 - No compartas ni subas `config.json` a control de versiones.
