@@ -67,14 +67,13 @@ BEGIN
             T0.DocDate                                                  AS FechaContabilizacion,
             T0.CreateDate                                               AS FechaCreacion,
             T0.TransNum,
-            T0.DocLine,
             T0.InQty                                                    AS CantidadEntrada,
             T0.OutQty                                                   AS CantidadSalida,
             T0.CalcPrice                                                AS PrecioUnitario,
             T0.TransValue                                               AS ValorTransaccion,
             SUM(T0.InQty - T0.OutQty) OVER (
                 PARTITION BY T0.ItemCode
-                ORDER BY T0.DocDate, T0.CreateDate, T0.TransNum, T0.DocLine
+                ORDER BY T0.DocDate, T0.CreateDate, T0.TransNum
                 ROWS UNBOUNDED PRECEDING
             )                                                            AS CantidadAcumulada
         FROM OINM T0
@@ -89,7 +88,7 @@ BEGIN
     SELECT *
     FROM Movimientos
     WHERE (@OcultarSaldoCero = 0 OR CantidadAcumulada <> 0)
-    ORDER BY ItemCode, FechaContabilizacion, FechaCreacion, TransNum, DocLine;
+    ORDER BY ItemCode, FechaContabilizacion, FechaCreacion, TransNum;
 
     -- Artículos del rango/grupo/almacén seleccionado sin ninguna transacción en el período
     IF @VisualizarSinTransacciones = 1
