@@ -10,9 +10,7 @@
      - Ocultar artículos con cantidad acumulada igual a cero
 
    La tabla origen es OINM (Registro de transacciones de stock), que es la
-   misma tabla que alimenta el informe nativo. El saldo acumulado se calcula
-   con una función de ventana (SUM ... OVER) sobre el histórico completo del
-   artículo (no solo del rango de fechas), tal como hace el informe estándar.
+   misma tabla que alimenta el informe nativo.
 
    NOTA: "Ocultar transacciones de serie/lote si el método de valoración del
    artículo actual no es válido" es un caso de borde muy específico del motor
@@ -36,90 +34,115 @@ DECLARE @ResumirPorCuentas          bit = 0; -- 0 = Por artículos, 1 = Resumir 
 DECLARE @Almacenes TABLE (WhsCode nvarchar(20) PRIMARY KEY);
 
 /* ----------------------------------------------------------------------------
-   1) Detalle "Por artículos": movimientos + saldo acumulado por artículo
+   1) "Por artículos" - vista COLAPSADA (una fila por artículo), igual a la
+      grilla nativa de SAP B1: al abrir el informe, cada artículo aparece
+      colapsado (flecha ▶) mostrando solo la cantidad y el valor acumulados
+      a la fecha; las columnas de una transacción puntual (Fecha del
+      sistema, Documento, Almacén, Cantidad, Costos, Valor trans., Nombre
+      de usuario) van en blanco hasta que el usuario expande el artículo.
+      "Cantidad acumulada"/"Valor acumulado" es el saldo TOTAL del artículo
+      a @FechaHasta (histórico completo, no solo el rango Desde/Hasta),
+      igual que en SAP; @FechaDesde solo decide qué artículos se listan
+      cuando @VisualizarSinTransacciones = 0 (deben tener movimiento en
+      el rango para aparecer).
    ---------------------------------------------------------------------------- */
 IF @ResumirPorCuentas = 0
 BEGIN
-    ;WITH Movimientos AS
+    ;WITH Saldos AS
     (
         SELECT
-            T0.ItemCode,
-            T1.ItemName                                                AS Descripcion,
-            T0.Warehouse                                                AS CodigoAlmacen,
-            T2.WhsName                                                  AS NombreAlmacen,
-            T0.TransType,
-            CASE T0.TransType
-                WHEN 13 THEN N'Factura de deudores'
-                WHEN 14 THEN N'Abono de deudores'
-                WHEN 18 THEN N'Factura de acreedores'
-                WHEN 19 THEN N'Abono de acreedores'
-                WHEN 20 THEN N'Entrega'
-                WHEN 21 THEN N'Devolución'
-                WHEN 22 THEN N'Entrada de mercancías (GRPO)'
-                WHEN 23 THEN N'Devolución de compra'
-                WHEN 59 THEN N'Entrada de mercancías'
-                WHEN 60 THEN N'Salida de mercancías'
-                WHEN 67 THEN N'Traspaso de stock'
-                WHEN 1250000001 THEN N'Saldo inicial de stock'
-                WHEN 1470000113 THEN N'Recuento de inventario'
-                ELSE CAST(T0.TransType AS nvarchar(20))
-            END                                                          AS TipoTransaccion,
-            T0.DocDate                                                  AS FechaContabilizacion,
-            T0.CreateDate                                               AS FechaCreacion,
-            T0.TransNum,
-            T0.InQty                                                    AS CantidadEntrada,
-            T0.OutQty                                                   AS CantidadSalida,
-            T0.CalcPrice                                                AS PrecioUnitario,
-            T0.TransValue                                               AS ValorTransaccion,
-            SUM(T0.InQty - T0.OutQty) OVER (
-                PARTITION BY T0.ItemCode
-                ORDER BY T0.DocDate, T0.CreateDate, T0.TransNum
-                ROWS UNBOUNDED PRECEDING
-            )                                                            AS CantidadAcumulada
-        FROM OINM T0
-        INNER JOIN OITM T1 ON T1.ItemCode = T0.ItemCode
-        INNER JOIN OWHS T2 ON T2.WhsCode  = T0.Warehouse
-        WHERE T0.DocDate BETWEEN @FechaDesde AND @FechaHasta
-          AND (NOT EXISTS (SELECT 1 FROM @Almacenes) OR T0.Warehouse IN (SELECT WhsCode FROM @Almacenes))
-          AND (@CodigoArticuloDesde IS NULL OR T0.ItemCode >= @CodigoArticuloDesde)
-          AND (@CodigoArticuloHasta IS NULL OR T0.ItemCode <= @CodigoArticuloHasta)
-          AND (@GrupoArticulo IS NULL OR T1.ItmsGrpCod = @GrupoArticulo)
-    )
-    SELECT *
-    FROM Movimientos
-    WHERE (@OcultarSaldoCero = 0 OR CantidadAcumulada <> 0)
-    ORDER BY ItemCode, FechaContabilizacion, FechaCreacion, TransNum;
-
-    -- Artículos del rango/grupo/almacén seleccionado sin ninguna transacción en el período
-    IF @VisualizarSinTransacciones = 1
-    BEGIN
-        SELECT
             T1.ItemCode,
-            T1.ItemName AS Descripcion,
-            T2.WhsCode  AS CodigoAlmacen,
-            T2.WhsName  AS NombreAlmacen,
-            NULL        AS TipoTransaccion,
-            NULL        AS FechaContabilizacion,
-            NULL        AS FechaCreacion,
-            0           AS CantidadEntrada,
-            0           AS CantidadSalida,
-            0           AS CantidadAcumulada
+            T1.ItemName,
+            SUM(CASE WHEN T0.DocDate <= @FechaHasta THEN T0.InQty - T0.OutQty ELSE 0 END)   AS CantidadAcumulada,
+            SUM(CASE WHEN T0.DocDate <= @FechaHasta THEN T0.TransValue        ELSE 0 END)   AS ValorAcumulado,
+            MAX(CASE WHEN T0.DocDate BETWEEN @FechaDesde AND @FechaHasta THEN 1 ELSE 0 END) AS TuvoMovimientoEnPeriodo
         FROM OITM T1
-        CROSS JOIN OWHS T2
-        WHERE (NOT EXISTS (SELECT 1 FROM @Almacenes) OR T2.WhsCode IN (SELECT WhsCode FROM @Almacenes))
-          AND (@CodigoArticuloDesde IS NULL OR T1.ItemCode >= @CodigoArticuloDesde)
+        LEFT JOIN OINM T0
+               ON T0.ItemCode = T1.ItemCode
+              AND (NOT EXISTS (SELECT 1 FROM @Almacenes) OR T0.Warehouse IN (SELECT WhsCode FROM @Almacenes))
+        WHERE (@CodigoArticuloDesde IS NULL OR T1.ItemCode >= @CodigoArticuloDesde)
           AND (@CodigoArticuloHasta IS NULL OR T1.ItemCode <= @CodigoArticuloHasta)
           AND (@GrupoArticulo IS NULL OR T1.ItmsGrpCod = @GrupoArticulo)
           AND T1.InvntItem = 'Y'
-          AND NOT EXISTS (
-                SELECT 1 FROM OINM T0
-                WHERE T0.ItemCode  = T1.ItemCode
-                  AND T0.Warehouse = T2.WhsCode
-                  AND T0.DocDate BETWEEN @FechaDesde AND @FechaHasta
-          )
-        ORDER BY T1.ItemCode, T2.WhsCode;
-    END
+        GROUP BY T1.ItemCode, T1.ItemName
+    )
+    SELECT
+        ROW_NUMBER() OVER (ORDER BY ItemCode)          AS [#],
+        ItemCode                                       AS [Número de artículo],
+        ItemName                                        AS Descripción,
+        CAST(NULL AS datetime)                          AS [Fecha del sistema],
+        CAST(NULL AS date)                              AS [Fecha de contabilización],
+        CAST(NULL AS nvarchar(20))                      AS Documento,
+        CAST(NULL AS nvarchar(20))                      AS Almacén,
+        CAST(NULL AS decimal(19,6))                     AS Cantidad,
+        CAST(NULL AS decimal(19,6))                     AS Costos,
+        CAST(NULL AS decimal(19,6))                     AS [Valor trans.],
+        CantidadAcumulada                               AS [Cantidad acumulada],
+        ValorAcumulado                                  AS [Valor acumulado],
+        CAST(NULL AS nvarchar(50))                      AS [Nombre de usuario]
+    FROM Saldos
+    WHERE (@VisualizarSinTransacciones = 1 OR TuvoMovimientoEnPeriodo = 1)
+      AND (@OcultarSaldoCero = 0 OR CantidadAcumulada <> 0)
+    ORDER BY ItemCode;
 END
+
+/* ----------------------------------------------------------------------------
+   1b) Drill-down: detalle de transacciones de UN artículo (equivalente a
+       expandir la flecha ▶ de una fila en la grilla anterior). Completar
+       @ItemCodeDrillDown y ejecutar por separado.
+   ---------------------------------------------------------------------------- */
+/*
+DECLARE @ItemCodeDrillDown nvarchar(20) = N'1.25-LUNIFRESA-2.0';
+
+;WITH Movimientos AS
+(
+    SELECT
+        T0.ItemCode,
+        T1.ItemName                                                 AS Descripcion,
+        T0.CreateDate                                               AS FechaDelSistema,
+        T0.DocDate                                                  AS FechaContabilizacion,
+        CASE T0.TransType
+            WHEN 13 THEN N'Factura de deudores'
+            WHEN 14 THEN N'Abono de deudores'
+            WHEN 18 THEN N'Factura de acreedores'
+            WHEN 19 THEN N'Abono de acreedores'
+            WHEN 20 THEN N'Entrega'
+            WHEN 21 THEN N'Devolución'
+            WHEN 22 THEN N'Entrada de mercancías (GRPO)'
+            WHEN 23 THEN N'Devolución de compra'
+            WHEN 59 THEN N'Entrada de mercancías'
+            WHEN 60 THEN N'Salida de mercancías'
+            WHEN 67 THEN N'Traspaso de stock'
+            WHEN 1250000001 THEN N'Saldo inicial de stock'
+            WHEN 1470000113 THEN N'Recuento de inventario'
+            ELSE CAST(T0.TransType AS nvarchar(20))
+        END                                                          AS Documento,
+        T0.Warehouse                                                 AS CodigoAlmacen,
+        T2.WhsName                                                   AS NombreAlmacen,
+        (T0.InQty - T0.OutQty)                                       AS Cantidad,
+        T0.CalcPrice                                                 AS Costos,
+        T0.TransValue                                                AS ValorTrans,
+        T0.CreatedBy                                                 AS IdUsuario,
+        SUM(T0.InQty - T0.OutQty) OVER (
+            PARTITION BY T0.ItemCode
+            ORDER BY T0.DocDate, T0.CreateDate, T0.TransNum
+            ROWS UNBOUNDED PRECEDING
+        )                                                             AS CantidadAcumulada,
+        SUM(T0.TransValue) OVER (
+            PARTITION BY T0.ItemCode
+            ORDER BY T0.DocDate, T0.CreateDate, T0.TransNum
+            ROWS UNBOUNDED PRECEDING
+        )                                                             AS ValorAcumulado
+    FROM OINM T0
+    INNER JOIN OITM T1 ON T1.ItemCode = T0.ItemCode
+    INNER JOIN OWHS T2 ON T2.WhsCode  = T0.Warehouse
+    WHERE T0.ItemCode = @ItemCodeDrillDown
+      AND T0.DocDate BETWEEN @FechaDesde AND @FechaHasta
+      AND (NOT EXISTS (SELECT 1 FROM @Almacenes) OR T0.Warehouse IN (SELECT WhsCode FROM @Almacenes))
+)
+SELECT * FROM Movimientos
+ORDER BY FechaContabilizacion, FechaDelSistema;
+*/
 
 /* ----------------------------------------------------------------------------
    2) "Resumir por cuentas": totales agrupados por la cuenta contable de
