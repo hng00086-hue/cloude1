@@ -4,7 +4,7 @@
    Reproduce los criterios de selección de la ventana estándar de SAP B1:
      - Fecha de contabilización (Desde/Hasta)
      - Artículos (Código Desde/Hasta, Grupo de artículos)
-     - Almacenes (lista de almacenes seleccionados)
+     - Almacenes (por defecto TODOS; opcionalmente se puede limitar a una lista)
      - Visualizar: "Por artículos" o "Resumir por cuentas"
      - Visualizar SÍ para artículos/cuentas sin transacciones
      - Ocultar artículos con cantidad acumulada igual a cero
@@ -30,11 +30,10 @@ DECLARE @VisualizarSinTransacciones bit = 1; -- 'Visualizar SI para artículos/c
 DECLARE @OcultarSaldoCero           bit = 0; -- 'Ocultar artículos con cantidad acumulada equivalente a cero'
 DECLARE @ResumirPorCuentas          bit = 0; -- 0 = Por artículos, 1 = Resumir por cuentas
 
--- Almacenes marcados en la captura de pantalla
+-- Almacenes a incluir: dejar vacía = TODOS los almacenes (OWHS completo).
+-- Para limitar a almacenes concretos, insertar sus códigos aquí, p. ej.:
+--   INSERT INTO @Almacenes (WhsCode) VALUES (N'PRODUC-1'), (N'PRODUC-2');
 DECLARE @Almacenes TABLE (WhsCode nvarchar(20) PRIMARY KEY);
-INSERT INTO @Almacenes (WhsCode) VALUES
-    (N'PRODUC-1'), (N'PRODUC-2'), (N'PRODUC-3'),
-    (N'RETENIDO'), (N'SOPLADO'), (N'SOP-RECA');
 
 /* ----------------------------------------------------------------------------
    1) Detalle "Por artículos": movimientos + saldo acumulado por artículo
@@ -82,7 +81,7 @@ BEGIN
         INNER JOIN OITM T1 ON T1.ItemCode = T0.ItemCode
         INNER JOIN OWHS T2 ON T2.WhsCode  = T0.Warehouse
         WHERE T0.DocDate BETWEEN @FechaDesde AND @FechaHasta
-          AND T0.Warehouse IN (SELECT WhsCode FROM @Almacenes)
+          AND (NOT EXISTS (SELECT 1 FROM @Almacenes) OR T0.Warehouse IN (SELECT WhsCode FROM @Almacenes))
           AND (@CodigoArticuloDesde IS NULL OR T0.ItemCode >= @CodigoArticuloDesde)
           AND (@CodigoArticuloHasta IS NULL OR T0.ItemCode <= @CodigoArticuloHasta)
           AND (@GrupoArticulo IS NULL OR T1.ItmsGrpCod = @GrupoArticulo)
@@ -107,9 +106,9 @@ BEGIN
             0           AS CantidadSalida,
             0           AS CantidadAcumulada
         FROM OITM T1
-        CROSS JOIN @Almacenes AAA
-        INNER JOIN OWHS T2 ON T2.WhsCode = AAA.WhsCode
-        WHERE (@CodigoArticuloDesde IS NULL OR T1.ItemCode >= @CodigoArticuloDesde)
+        CROSS JOIN OWHS T2
+        WHERE (NOT EXISTS (SELECT 1 FROM @Almacenes) OR T2.WhsCode IN (SELECT WhsCode FROM @Almacenes))
+          AND (@CodigoArticuloDesde IS NULL OR T1.ItemCode >= @CodigoArticuloDesde)
           AND (@CodigoArticuloHasta IS NULL OR T1.ItemCode <= @CodigoArticuloHasta)
           AND (@GrupoArticulo IS NULL OR T1.ItmsGrpCod = @GrupoArticulo)
           AND T1.InvntItem = 'Y'
@@ -142,7 +141,7 @@ BEGIN
     INNER JOIN OITB T3 ON T3.ItmsGrpCod = T1.ItmsGrpCod
     LEFT JOIN OACT A0  ON A0.AcctCode   = T3.StockAct
     WHERE T0.DocDate BETWEEN @FechaDesde AND @FechaHasta
-      AND T0.Warehouse IN (SELECT WhsCode FROM @Almacenes)
+      AND (NOT EXISTS (SELECT 1 FROM @Almacenes) OR T0.Warehouse IN (SELECT WhsCode FROM @Almacenes))
       AND (@CodigoArticuloDesde IS NULL OR T0.ItemCode >= @CodigoArticuloDesde)
       AND (@CodigoArticuloHasta IS NULL OR T0.ItemCode <= @CodigoArticuloHasta)
       AND (@GrupoArticulo IS NULL OR T1.ItmsGrpCod = @GrupoArticulo)
