@@ -122,15 +122,23 @@ BEGIN
 END
 
 /* ----------------------------------------------------------------------------
-   2) "Resumir por cuentas": totales agrupados por la cuenta contable de
-      inventario del grupo de artículos (aproximación al método de
-      determinación de cuentas a nivel de grupo).
+   2) "Resumir por cuentas": totales agrupados por grupo de artículos.
+      NOTA: la cuenta contable de inventario real depende del método de
+      determinación de cuentas configurado en la empresa (por grupo de
+      artículos, por almacén o por artículo), y el nombre de esa columna
+      varía según versión/localización de SAP B1, por lo que aquí se
+      agrupa por el grupo de artículos (OITB), que es estable en todas
+      las versiones. Si tu empresa usa determinación de cuentas "por
+      artículo" o "por almacén", ajusta el agrupamiento a OITM/OWHS y al
+      campo de cuenta contable correspondiente en tu base (puedes
+      localizarlo con: SELECT name FROM sys.columns WHERE object_id =
+      OBJECT_ID('OITB') ORDER BY name;).
    ---------------------------------------------------------------------------- */
 IF @ResumirPorCuentas = 1
 BEGIN
     SELECT
-        T3.StockAct                                                 AS CuentaContable,
-        A0.AcctName                                                 AS NombreCuenta,
+        T3.ItmsGrpCod                                               AS CodigoGrupoArticulo,
+        T3.ItmsGrpNam                                                AS NombreGrupoArticulo,
         SUM(T0.InQty)                                               AS TotalEntradas,
         SUM(T0.OutQty)                                              AS TotalSalidas,
         SUM(T0.InQty - T0.OutQty)                                   AS CantidadNeta,
@@ -138,13 +146,12 @@ BEGIN
     FROM OINM T0
     INNER JOIN OITM T1 ON T1.ItemCode   = T0.ItemCode
     INNER JOIN OITB T3 ON T3.ItmsGrpCod = T1.ItmsGrpCod
-    LEFT JOIN OACT A0  ON A0.AcctCode   = T3.StockAct
     WHERE T0.DocDate BETWEEN @FechaDesde AND @FechaHasta
       AND (NOT EXISTS (SELECT 1 FROM @Almacenes) OR T0.Warehouse IN (SELECT WhsCode FROM @Almacenes))
       AND (@CodigoArticuloDesde IS NULL OR T0.ItemCode >= @CodigoArticuloDesde)
       AND (@CodigoArticuloHasta IS NULL OR T0.ItemCode <= @CodigoArticuloHasta)
       AND (@GrupoArticulo IS NULL OR T1.ItmsGrpCod = @GrupoArticulo)
-    GROUP BY T3.StockAct, A0.AcctName
+    GROUP BY T3.ItmsGrpCod, T3.ItmsGrpNam
     HAVING (@OcultarSaldoCero = 0 OR SUM(T0.InQty - T0.OutQty) <> 0)
-    ORDER BY T3.StockAct;
+    ORDER BY T3.ItmsGrpCod;
 END
