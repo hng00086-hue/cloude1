@@ -6,7 +6,10 @@ using SapConnection;
 const string defaultQuery = "SELECT @@VERSION AS SqlVersion, DB_NAME() AS CurrentDatabase, GETDATE() AS ServerTime";
 
 // Datos crudos (artículo x almacén) para armar el pivote en memoria: todos los
-// artículos de inventario y todos los almacenes, sin restricciones de rango.
+// artículos (con y sin manejo de inventario) y todos los almacenes, sin
+// restricciones de rango. Los artículos con InvntItem = 'N' no tienen registros
+// en OITW, por eso se usa LEFT JOIN; aparecen igual, con las columnas de
+// almacén en blanco.
 const string inventoryByWarehouseQuery = @"
 SELECT
     T1.ItemCode,
@@ -15,8 +18,7 @@ SELECT
     T0.WhsCode,
     T0.OnHand
 FROM OITM T1
-INNER JOIN OITW T0 ON T0.ItemCode = T1.ItemCode
-WHERE T1.InvntItem = 'Y'
+LEFT JOIN OITW T0 ON T0.ItemCode = T1.ItemCode
 ORDER BY T1.ItemCode, T0.WhsCode";
 
 var configPath = Path.Combine(Directory.GetCurrentDirectory(), "config.json");
@@ -103,7 +105,9 @@ static void PrintResults(IDataReader reader)
 // Arma el mismo pivote que "Informe de stocks por almacén" de SAP Business One:
 // una fila por artículo, una columna por almacén con la cantidad en stock, y una
 // columna de Total de almacén con la suma. Los almacenes sin stock para un
-// artículo se muestran en blanco, igual que en SAP.
+// artículo se muestran en blanco, igual que en SAP. Los artículos sin manejo de
+// inventario (sin registros en OITW) también aparecen, con todas las columnas
+// de almacén en blanco.
 static void PrintInventoryByWarehouse(IDataReader reader)
 {
     var items = new List<(string ItemCode, string ItemName, string Uom)>();
@@ -117,14 +121,21 @@ static void PrintInventoryByWarehouse(IDataReader reader)
         var itemCode = reader.GetString(0);
         var itemName = reader.IsDBNull(1) ? "" : reader.GetString(1);
         var uom = reader.IsDBNull(2) ? "" : reader.GetString(2);
-        var whsCode = reader.GetString(3);
-        var onHand = reader.IsDBNull(4) ? 0m : Convert.ToDecimal(reader.GetValue(4));
 
         if (!itemIndex.ContainsKey(itemCode))
         {
             itemIndex[itemCode] = items.Count;
             items.Add((itemCode, itemName, uom));
         }
+
+        // Artículos sin manejo de inventario no tienen fila en OITW (WhsCode viene NULL).
+        if (reader.IsDBNull(3))
+        {
+            continue;
+        }
+
+        var whsCode = reader.GetString(3);
+        var onHand = reader.IsDBNull(4) ? 0m : Convert.ToDecimal(reader.GetValue(4));
 
         if (warehouseSeen.Add(whsCode))
         {
@@ -145,12 +156,6 @@ static void PrintInventoryByWarehouse(IDataReader reader)
         var total = warehouses
             .Select(w => stock.TryGetValue((item.ItemCode, w), out var qty) ? qty : 0m)
             .Sum();
-
-        // Un artículo sin existencias en ningún almacén no aporta al reporte.
-        if (total == 0m)
-        {
-            continue;
-        }
 
         var row = new List<string>
         {
