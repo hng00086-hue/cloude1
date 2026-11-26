@@ -1,0 +1,10 @@
+// Creado por mí — Equipo: Telpo TPS320
+pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories { google(); mavenCentral() }
+}
+rootProject.name = "TelpoPrintBridge"
+include ':app'

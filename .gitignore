@@ -4,3 +4,10 @@ obj/
 
 # Credenciales reales de conexión a SAP: no se suben al repo
 SapConnection/config.json
+
+# Android (TelpoPrintBridge)
+.gradle/
+local.properties
+TelpoPrintBridge/app/build/
+TelpoPrintBridge/build/
+.idea/
