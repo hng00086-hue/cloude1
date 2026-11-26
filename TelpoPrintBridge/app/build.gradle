@@ -1,0 +1,28 @@
+// Creado por mí — Equipo: Telpo TPS320
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.equipo.telpobridge'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.equipo.telpobridge'
+        minSdk 21
+        // El TPS320 usa Android 8.1 (API 27)
+        targetSdk 27
+        versionCode 1
+        versionName '1.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    // Aquí va el SDK de Telpo (.jar / .aar) que entrega el fabricante o el distribuidor
+    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+}

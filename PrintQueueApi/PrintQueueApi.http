@@ -1,0 +1,27 @@
+# Creado por mí — Equipo: Telpo TPS320
+@host = http://localhost:5080
+
+### Crear un ticket de prueba
+POST {{host}}/api/print-jobs/test?deviceId=TPS320-01
+
+### Crear un ticket propio
+POST {{host}}/api/print-jobs
+Content-Type: application/json
+
+{
+  "deviceId": "TPS320-01",
+  "copies": 1,
+  "lines": [
+    { "type": "Text", "text": "MI EMPRESA", "align": "Center", "bold": true, "size": "Large" },
+    { "type": "Separator" },
+    { "type": "Text", "text": "Factura: 12345" },
+    { "type": "Text", "text": "Total: $ 150.00", "align": "Right", "bold": true },
+    { "type": "Feed", "lines": 3 }
+  ]
+}
+
+### Ver la cola
+GET {{host}}/api/print-jobs
+
+### (Lo usa el POS) Tomar el siguiente ticket pendiente
+POST {{host}}/api/print-jobs/claim?deviceId=TPS320-01
